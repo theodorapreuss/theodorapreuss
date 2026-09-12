@@ -1,0 +1,55 @@
+name: CI Pipeline
+on: [push, pull_request]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ] || [ -f pyproject.toml ] || [ -f setup.py ]; then
+            python -m pip install --upgrade pip
+            pip install -r requirements.txt 2>/dev/null || pip install -e .
+          else
+            echo "No Python manifest found; skipping install."
+          fi
+      - name: Lint
+        run: |
+          if [ -f pyproject.toml ] || [ -f setup.cfg ] || [ -f .flake8 ] || [ -f tox.ini ]; then
+            python -m pip install flake8  # or use project's configured linter
+            flake8 .
+          else
+            echo "No lint configuration found; skipping lint."
+          fi
+      - name: Build / Type-check
+        run: |
+          if [ -f pyproject.toml ] || [ -f setup.py ] || [ -f setup.cfg ]; then
+            python -m build
+          else
+            echo "No build configuration found; skipping build."
+          fi
+      - name: Test
+        run: |
+          if [ -f pytest.ini ] || [ -f pyproject.toml ] || [ -f setup.py ] || [ -d tests ]; then
+            python -m pytest
+          else
+            echo "No test configuration found; skipping tests."
+          fi
+      - name: Summary
+        if: always()
+        run: echo "CI pipeline completed for Python ${{ matrix.python-version }}." >> $GITHUB_STEP_SUMMARY
